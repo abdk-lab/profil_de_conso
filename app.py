@@ -25,17 +25,24 @@ st.caption("Ajustez vos paramètres industriels dans la barre latérale pour met
 # BARRE LATÉRALE
 st.sidebar.header("🎛️ Configuration Usine")
 
-# Recherche automatique du fichier dans le dossier GitHub
+# Lecture automatique du fichier prix.csv
 try:
-    nom_fichier = "donnees_prix_spot_processed_2020_2025.xlsx - Spot_FR_2020_2025.csv"
-    df_complet = pd.read_csv(nom_fichier)
+    # On tente d'abord de lire avec un séparateur point-virgule (Excel français)
+    try:
+        df_complet = pd.read_csv("prix.csv", sep=";")
+        if "Prix" not in df_complet.columns:
+            raise ValueError
+    except:
+        # Si ça échoue, on tente le séparateur virgule standard
+        df_complet = pd.read_csv("prix.csv", sep=",")
+
     df_complet['Date'] = pd.to_datetime(df_complet['Date'])
     df_ref = df_complet[df_complet['Annee'] == 2024].sort_values(by=['Date', 'Heure']).reset_index(drop=True)
     prices_ref = df_ref['Prix'].values
     N_hours = len(prices_ref)
     st.sidebar.success(f"✅ Base de prix 2024 chargée ({N_hours} heures)")
 except Exception as e:
-    st.sidebar.error("❌ Fichier de prix introuvable. Passez à l'étape suivante pour l'ajouter au dossier.")
+    st.sidebar.error("❌ Erreur de lecture du fichier 'prix.csv'. Vérifiez sa structure.")
     st.stop()
 
 # Curseurs de réglages
@@ -80,12 +87,17 @@ else:
         
         with g1:
             df_ref['Conso_MW'] = conso_mw
-            df_h = df_ref[df_ref['Mois'].isin(['April', 'May', 'June', 'July', 'August'])].groupby('Heure').mean(numeric_only=True).reset_index()
+            # Sélection de mois pour le graphique d'illustration (on vérifie s'ils existent)
+            mois_dispo = df_ref['Mois'].unique()
+            mois_ete = [m for m in ['April', 'May', 'June', 'July', 'August', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août'] if m in mois_dispo]
+            if len(mois_ete) == 0: mois_ete = [mois_dispo[0]]
+            
+            df_h = df_ref[df_ref['Mois'].isin(mois_ete)].groupby('Heure').mean(numeric_only=True).reset_index()
             fig1 = go.Figure()
             fig1.add_trace(go.Bar(x=df_h['Heure'], y=df_h['Conso_MW'], name="Conso Usine (MW)", yaxis="y1", marker_color="#4CAF50", opacity=0.7))
             fig1.add_trace(go.Scatter(x=df_h['Heure'], y=df_h['Prix'], name="Prix (€/MWh)", yaxis="y2", line=dict(color="#2196F3", width=2.5)))
             fig1.update_layout(
-                title="<b>Profil d'Été (Moyenne horaire)</b>",
+                title="<b>Profil horaire moyen (Période sélectionnée)</b>",
                 yaxis=dict(title="Puissance Usine (MW)", titlefont=dict(color="#4CAF50")),
                 yaxis2=dict(title="Prix Spot (€/MWh)", titlefont=dict(color="#2196F3"), overlaying="y", side="right"),
                 template="plotly_white", legend=dict(x=0.01, y=0.99)
